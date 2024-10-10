@@ -1,0 +1,92 @@
+version: "3.3"
+
+volumes:
+  db_data:
+  minio_data:
+
+networks:
+  mlflow-server:
+    driver: bridge
+
+services:
+  db:
+    restart: always
+    image: postgres
+    container_name: mlflow-db
+    ports:
+      - "5432:5432"
+    networks:
+      - mlflow-server
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${PG_USER}
+      - POSTGRES_PASSWORD=${PG_PASSWORD}
+      - POSTGRES_DB=${PG_DATABASE}
+    volumes:
+      - db_data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      retries: 5
+  # MinIO server
+  minio:
+    image: minio/minio
+    container_name: mlflow-minio
+    expose:
+      - "9000"
+    ports:
+      - "9000:9000"
+      # MinIO Console is available at http://localhost:9001
+      - "9001:9001"
+    networks:
+      - mlflow-server
+    volumes:
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    command: server /data --console-address ":9001"
+
+  # Create a bucket named "bucket" if it doesn't exist
+  minio-create-bucket:
+    image: minio/mc
+    container_name: mlflow-create-bucket
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      bash -c "
+      mc alias set minio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+      if ! mc ls minio | grep --quiet bucket; then
+        mc mb minio/bucket
+      else
+        echo 'bucket already exists'
+      fi
+      "
+  mlflow-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+    container_name: mlflow-server
+    depends_on:
+      - db
+      - minio
+    ports:
+      - "5000:5000"
+    networks:
+      - mlflow-server
+    environment:
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+    command:
+      mlflow server
+      --backend-store-uri postgresql://${PG_USER}:${PG_PASSWORD}@mlflow-db:${PG_PORT}/${PG_DATABASE}
+      --serve-artifacts
+      --host 0.0.0.0
+      --artifacts-destination s3://${MLFLOW_BUCKET_NAME}

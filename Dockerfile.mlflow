@@ -1,0 +1,24 @@
+# Dockerfile.mlflow
+FROM python:3.8-slim
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install MLflow and psycopg2
+RUN pip install mlflow psycopg2-binary
+
+# Set the working directory
+WORKDIR /app
+
+# Copy any additional scripts or configuration files if needed
+# COPY ./your_script.py /app/
+
+# Expose the port MLflow will run on
+EXPOSE 5000
+
+# Command to run MLflow server
+# CMD ["mlflow", "server", "--backend-store-uri", "postgresql://postgres:swd12345@0.0.0.0:5432/mlflow-db", "--artifacts-destination", "s3://bucket", "--host", "0.0.0.0", "--port", "5000"]
