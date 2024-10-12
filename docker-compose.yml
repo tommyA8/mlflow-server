@@ -33,19 +33,24 @@ services:
   minio:
     image: minio/minio
     container_name: mlflow-minio
+    restart: always
     expose:
       - "9000"
     ports:
       - "9000:9000"
-      # MinIO Console is available at http://localhost:9001
       - "9001:9001"
     networks:
       - mlflow-server
     volumes:
       - minio_data:/data
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MINIO_ADDRESS=${MINIO_ADDRESS}
+      - MINIO_PORT=${MINIO_PORT}
+      - MINIO_STORAGE_USE_HTTPS=${MINIO_STORAGE_USE_HTTPS}
+      - MINIO_CONSOLE_ADDRESS=${MINIO_CONSOLE_ADDRESS}
+      
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -60,20 +65,24 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+    networks:
+      - mlflow-server
     entrypoint: >
       bash -c "
-      mc alias set minio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
-      if ! mc ls minio | grep --quiet bucket; then
-        mc mb minio/bucket
-      else
-        echo 'bucket already exists'
-      fi
+      /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      /usr/bin/mc mb myminio/${MLFLOW_BUCKET_NAME} || true;
+      /usr/bin/mc admin policy add myminio mlflow-policy /tmp/mlflow-policy.json;
+      /usr/bin/mc admin user add myminio mlflow-user ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
+      /usr/bin/mc admin policy set myminio mlflow-policy user=mlflow-user;
+      exit 0;
       "
+
   mlflow-server:
     build:
       context: .
       dockerfile: Dockerfile.mlflow
     container_name: mlflow-server
+    restart: always
     depends_on:
       - db
       - minio
@@ -84,9 +93,13 @@ services:
     environment:
       - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      # - MLFLOW_S3_ENDPOINT_URL=http://s3:${MINIO_PORT}
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:${MINIO_PORT}
+      - MLFLOW_S3_IGNORE_TLS=true
     command:
       mlflow server
       --backend-store-uri postgresql://${PG_USER}:${PG_PASSWORD}@mlflow-db:${PG_PORT}/${PG_DATABASE}
-      --serve-artifacts
       --host 0.0.0.0
+      --serve-artifacts
       --artifacts-destination s3://${MLFLOW_BUCKET_NAME}
+      # --default-artifact-root

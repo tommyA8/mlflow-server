@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install MLflow and psycopg2
-RUN pip install mlflow psycopg2-binary
+RUN pip install mlflow psycopg2-binary minio boto3
 
 # Set the working directory
 WORKDIR /app
