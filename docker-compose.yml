@@ -71,11 +71,11 @@ services:
       bash -c "
       /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
       /usr/bin/mc mb myminio/${MLFLOW_BUCKET_NAME} || true;
-      /usr/bin/mc admin policy add myminio mlflow-policy /tmp/mlflow-policy.json;
-      /usr/bin/mc admin user add myminio mlflow-user ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
-      /usr/bin/mc admin policy set myminio mlflow-policy user=mlflow-user;
       exit 0;
       "
+    # /usr/bin/mc admin policy add myminio mlflow-policy /tmp/mlflow-policy.json;
+    # /usr/bin/mc admin user add myminio mlflow-user ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
+    # /usr/bin/mc admin policy set myminio mlflow-policy user=mlflow-user;
 
   mlflow-server:
     build:
